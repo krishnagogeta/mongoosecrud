@@ -1,150 +1,193 @@
-const express = require("express");
-const mongoose = require("mongoose");
-const app = express();
-const Product = require("./model/Product");
-app.use(express.json());
+const express = require('express');
+const bodyParser = require('body-parser');
 const cors = require('cors');
-app.use(express.json());
-app.use(cors()); 
-let url = require("./url");
-//--------------------connection to database-----------------------------------
-mongoose.connect(url, { dbName: "capstone" }).then(
-  () => {
-    console.log("Connection Success");
-  },
-  (err) => {
-    console.log("Connection Failed", err);
-  }
-);
-//---------------fetch products---------------------------------------------------
-app.get("/", async (req, res) => {
-  const productss = await Product.find();
-  return res.json(productss);
+const url = require('./url');
+const mongoose = require('mongoose');
+
+
+const app = express();
+const PORT = process.env.PORT || 8080;
+
+//set JSON as MIME type
+app.use(bodyParser.json());
+
+//client is not sending form data -> encoding JSON
+app.use(bodyParser.urlencoded({ extended: true }));
+
+//enable CORS -> Cross Origine Resource Sharing -> communication among various ports
+app.use(cors());
+
+
+mongoose.connect(url)
+    .then(() => console.log('Connected to MongoDB...'))
+    .catch((err) => console.log('Could not connect to MongoDB...', err));
+
+
+const userSchema = new mongoose.Schema({
+    u_name: String,
+    u_pwd: String
 });
 
-//-----------------login--------------------------------------------------------
-app.post("/login", async (req, res) => {
-  const { u_name, upwd } = req.body;
-
-  try {
-    const user = await mongoose.connection.db
-      .collection("users")
-      .findOne({ u_name, upwd });
-    if (user) {
-      res.json({ auth: "success", user: u_name });
-    } else {
-      res.json({ auth: "failed" });
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
-  }
+const productSchema = new mongoose.Schema({
+    p_id: Number,
+    p_name: String,
+    p_cost: Number,
+    p_category: String,
+    p_description: String,
+    p_url: String
 });
 
-// Signup ------------------------------------------------------------------
-app.post("/signup", async (req, res) => {
-  const { u_name, upwd } = req.body;
+const cartSchema = new mongoose.Schema({
+    p_id: Number,
+    p_name: String,
+    p_cost: Number,
+    p_category: String,
+    p_description: String,
+    p_url: String,
+    p_count: Number
+});
 
-  console.log("Request Body:", req.body); // Debugging log
+    
+const User = mongoose.model('users', userSchema);
+const Product = mongoose.model('products', productSchema);
+const Cart = mongoose.model('carts', cartSchema);
 
-  // if (!u_name || !upwd) {
-  //   return res.status(400).json({ error: 'u_name and upwd are required' });
-  // }
-  const user = await mongoose.connection.db
-    .collection("users")
-    .findOne({ u_name, upwd });
-  if (user) {
-    res.json("Already a user please login");
-  } else {
+
+
+app.get('/login', async (req, res) => {
+    const {u_name, u_pwd} = req.body;
+
     try {
-      // Get the users collection
-      const usersCollection = mongoose.connection.db.collection("users");
+        const user = await User.find({
+            u_name: u_name,
+            u_pwd: u_pwd
+        });
 
-      // Insert the new user
-      const result = await usersCollection.insertOne({ u_name, upwd });
-      console.log("Insert Result:", result); // Debugging log
-
-      // Send success response
-      res.json({ auth: "success", user: u_name });
-    } catch (err) {
-      console.error(err);
-      res.status(500).send("Server Error");
+        if(user.length > 0) // record found
+            res.send('Login Success');
+        else
+            res.status(401).send('Login Fail');
     }
-  }
+    catch(err) {
+        res.status(500).json({ message: 'Error occurred', error: err.message });
+    }
 });
-//------------insert to cart-----------------------------------------------------
-app.post("/cart",async(req,res)=>{
-    const{u_name,p_img,p_id,p_cost} = req.body
-    let qty = 1;
-    try{
-        const cartCollection = mongoose.connection.db.collection("cart")
-        const result = await cartCollection.insertOne({ u_name, p_cost,p_id,p_img,qty});
-        console.log("Insert Result:", result); // Debugging log
 
-      // Send success response
-        res.json("Product inserted Successfully");
-    }
-    catch(err){
-        console.log(err)
+
+app.post('/signup', async (req, res) => {
+    const {u_name, u_pwd} = req.body;
+
+    if (!u_name || !u_pwd) {
+        return res.status(400).send('Username and Password are required');
     }
 
-})
+    try {
+        const findUsers = await User.find({ u_name: u_name });
 
-//----------update cart----------------------------------
-app.post("/updatecart", async(req,res) => {
-    let p_id = req.body.p_id
-	let u_name = req.body.u_name
-	let obj = { "qty": req.body.qty }
-    try{
-        const cartCollection = mongoose.connection.collection("cart")
-        cartCollection.updateOne({ p_id, u_name }, { $set: obj },
-            (err, result) => {
-                if (err)
-                    res.json({ 'cartUpdate': 'Error ' + err })
-                else {
-                    if (result.matchedCount != 0) {
-                        console.log(`Cart data for ${u_name} updated`)
-                        res.json({ 'cartUpdate': 'success' })
-                    }
-                    else {
-                        console.log(`Record not updated`)
-                        res.json({ 'cartUpdate': 'Record Not found' })
-                    }
-                    //conn.close()
-                }
-            })
+        if(findUsers.length > 0)  // If the username already exists
+            return res.status(400).send('Username already exists.');
 
+        const newUser = User.create({
+            "u_name": u_name,
+            "u_pwd": u_pwd
+        });
+
+        res.status(201).send({ message: 'User created'});
     }
-    catch(err){
-
-        console.log(err)
+    catch(err) {
+        // console.log(err);
+        res.status(500).send({ message: 'Error occurred', error: err.message });
     }
-})
+});
 
-app.post('/delteItem', (req,res)=>{
-    let p_id = req.body.p_id
-	let u_name = req.body.u_name
-    try{
-        const cartCollection = mongoose.connection.collection("cart")
-        cartCollection.deleteOne({p_id,u_name}, (err, result) => {
-            if (err)
-                res.json({ 'cartDelete': 'Error ' + err })
-            else {
-                if (result.deletedCount != 0) {
-                    console.log(`Cart data from ${u_name} deleted`)
-                    res.json({ 'cartDelete': 'success' })
-                }
-                else {
-                    console.log('Cart Data Not deleted')
-                    res.json({ 'cartDelete': 'Record Not found' })
-                }
-                //conn.close()
-            }
-        })
 
+
+
+app.get('/fetch', async (req, res) => {
+    try {
+        const products = await Product.find();
+        res.json(products);
     }
-    catch(err){
-        console.log(err)
+    catch (err) {
+        // console.log(err);
+        res.status(500).send(err);
     }
-})
-app.listen("8080", () => console.log("running"));
+});
+
+
+
+app.get('/cart', async (req, res) => {
+    try {
+        const cartDetails = await Cart.find();
+        // console.log(cartDetails);
+        res.json(cartDetails);
+    }
+    catch(err) {
+        res.status(500).send(err);
+    }
+});
+
+
+app.post('/cart/add', async (req, res) => {
+    const p_id = req.body.p_id;
+    let response = await Product.findOne({"p_id": p_id});
+    let product = response.toObject();
+    product.p_count = 1;
+    console.log(product);
+    const cartItem = new Cart(product);
+    await cartItem.save();
+
+    res.status(200).send({'message': 'Item added to cart', 'cart-item': cartItem});
+});
+
+
+app.put('/cart/update', async (req, res) => {
+    const {p_id, p_cost, p_count} = req.body;
+
+    const updatedData = {
+        p_count: p_count,
+        p_cost: p_cost * p_count
+    };
+
+    try {
+        const response = await Cart.updateOne({p_id: p_id}, updatedData);
+        
+        console.log(response);
+
+        if(response.matchedCount == 0)
+            return res.status(404).send('Cart Item Not Found');
+        if(response.modifiedCount > 0)
+            return res.status(200).send({p_id: p_id, updatedData});
+        else
+            return res.status(200).send({message: 'No Update Needed'});
+    }
+    catch(err) {
+        res.status(500).send({message: 'Error occurred', error: err.message});
+    }
+});
+
+
+app.delete('/cart/delete', async (req, res) => {
+    const {p_id} = req.body;
+
+    try {
+        const response = await Cart.deleteOne({p_id: p_id});
+
+        console.log(response);
+
+        if(response.deletedCount > 0)
+            res.status(200).send({ message: 'Cart item deleted successfully' });
+        else
+        res.status(404).send({ message: 'Cart item not found' });
+    }
+    catch(err) {
+        res.status(500).send({message: 'Error occurred', error: err.message});
+    }
+});
+
+
+
+
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
