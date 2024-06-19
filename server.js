@@ -55,7 +55,9 @@ const Cart = mongoose.model('carts', cartSchema);
 
 
 app.get('/login', async (req, res) => {
-    const {u_name, u_pwd} = req.body;
+    const { u_name, u_pwd } = req.query;
+
+    console.log(`Login attempt: username=${u_name}, password=${u_pwd}`);
 
     try {
         const user = await User.find({
@@ -63,12 +65,12 @@ app.get('/login', async (req, res) => {
             u_pwd: u_pwd
         });
 
-        if(user.length > 0) // record found
+        if (user.length > 0) {
             res.send('Login Success');
-        else
+        } else {
             res.status(401).send('Login Fail');
-    }
-    catch(err) {
+        }
+    } catch (err) {
         res.status(500).json({ message: 'Error occurred', error: err.message });
     }
 });
